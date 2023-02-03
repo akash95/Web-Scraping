@@ -1,0 +1,124 @@
+def ebay():
+    
+    from bs4 import BeautifulSoup as bs
+    import requests
+    import time 
+    import os
+    import re
+    import pandas as pd
+    import numpy as np
+    
+    
+    user_agent = {'User-agent': 'Mozilla/5.0'}
+    
+    os.getcwd()
+    os.chdir('D:/UC Davis/Winter Quarter/Data Design/Assignments/Week-4 (Ind)')
+    #Q1
+    url = 'https://www.ebay.com/sch/i.html?_from=R40&_nkw=amazon+gift+card&_sacat=0&rt=nc&LH_Sold=1&LH_Complete=1'
+    page = requests.get(url, headers = user_agent)
+    
+    soup = bs(page.text, 'lxml')
+    
+    #ss = bs(page.content, 'html.parser')
+    
+    if not os.path.exists('hw4'):
+        os.mkdir('hw4')
+    
+    #a
+    #Store content of this url onto a file named 'amazon_gift_card_01.htm'
+    #def_read(url)
+    file = open('hw4/amazon_gift_card_01.htm',"wb")
+    file.write(page.content)
+    file.close()
+    #os.system('cls')
+    
+    #b Store urls in a list
+    url_list = []
+    for i in range(10):
+        #print(i)
+        url_list.append(str(url + '&_pgn=' + str(i+1)))
+        page_new = requests.get(url_list[i], headers=user_agent)
+        time.sleep(10)
+        file = open('hw4/amazon_gift_card_'+'{:02d}'.format(i+1)+'.htm','wb')
+        file.write(page_new.content)
+        file.close()
+        print("Content of page: ",i+1,"written to htm file")
+    
+    page_item_links = {}
+    
+    titles, price, shipping_cost = [],[],[]
+        
+    for i in range(10):     
+        file = open('hw4/amazon_gift_card_'+'{:02d}'.format(i+1)+'.htm','rb').read()
+        page = bs(file,'html.parser')
+        overall= page.find_all('div', class_ ='s-item__info clearfix')
+        print('Page number', i+1)
+        
+        for j in range(1,61):
+            print("Element no:",j)
+            titles.append(overall[j].find('div', class_='s-item__title').text.strip())
+            price.append(overall[j].find('span', class_='s-item__price').text.strip())
+            if('New Listing' in titles[j-1]):
+                titles[j-1] = titles[j-1].replace('New Listing','')
+            print("Title", titles[j-1]) 
+            print('Price', price[j-1])       
+            try: 
+                shipping_cost.append(overall[j].find('span', class_='s-item__shipping s-item__logisticsCost').text.strip())
+            except:
+                shipping_cost.append('Free shipping')
+            print('Shipping cost', shipping_cost[j-1])      
+    
+    #face_value.append(float(re.findall(r'(?:[0-9]*\.*[0-9]+)', titles[i])[0]))
+    
+    face_value=[]
+    t= []
+    updated_price = []
+    updated_shipping_cost = []
+    for i in range(len(titles)):
+        #t.append(re.match(r'to',price[i]))
+            try:
+                if('$'in titles[i]):
+                    face_value.append(float(re.findall(r'.*\$([0-9]+).*', titles[i])[0]))
+                elif('USD'in titles[i]):
+                    face_value.append(float(re.findall(r'.*([0-9]) USD.*', titles[i])[0]))
+                else:
+                    face_value.append(float(re.findall(r'.*([0-9]) Dollars.*', titles[i])[0]))   
+            except:
+                face_value.append(0)
+            
+            if('to' in price[i]):
+                updated_price.append('Range')
+            else:
+                updated_price.append(float(re.findall(r'(?:[0-9]*\.*[0-9]+)', price[i])[0]))
+                
+            if(shipping_cost[i]=='Free shipping'):
+                updated_shipping_cost.append(0)
+            else:
+                updated_shipping_cost.append(float(re.findall(r'(?:[0-9]*\.*[0-9]+)', shipping_cost[i])[0]))
+                 
+    
+    df = pd.DataFrame(list(zip(titles, updated_price, updated_shipping_cost, face_value)), columns = ['Titles','Price','Shipping cost', 'Face value'])
+    
+    
+    new_df = df[df['Price']!='Range']
+    
+    new_df['Total cost'] = new_df['Price'] + new_df['Shipping cost']
+    
+    new_df['Flag'] = np.where((new_df['Face value'] < new_df['Total cost']),1,0)
+    
+    # Fraction of amazon gift cards that sell above face value
+    fraction = sum(new_df['Flag'])/len(new_df)
+    
+    print("Fraction of amazon gift cards that sell above face value is: ", round(fraction,2))
+    return df, new_df
+
+org_df, new_df = ebay()
+
+
+org_df.to_csv('D:/UC Davis/Winter Quarter/Data Design/Assignments/Week-4 (Ind)/hw4/original.csv', index=False)
+
+new_df.to_csv('D:/UC Davis/Winter Quarter/Data Design/Assignments/Week-4 (Ind)/hw4/new.csv',index=False)
+
+
+# Total cost is greater than face value for many items: This could be because of the additional shipping cost which compensates for the price drop
+
